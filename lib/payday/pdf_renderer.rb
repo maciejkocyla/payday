@@ -16,11 +16,17 @@ module Payday
 
     def self.pdf(invoice)
       pdf = Prawn::Document.new(page_size: invoice_or_default(invoice, :page_size))
-
       # set up some default styling
       pdf.font_size(8)
+      pdf.font_families.update("Lato" => { :light => Payday::Config.default.lato_light_font,
+                                            :normal => Payday::Config.default.lato_regular_font,
+                                            :medium => Payday::Config.default.lato_medium_font,
+                                            :bold => Payday::Config.default.lato_bold_font
+                                          })
 
-      stamp(invoice, pdf)
+
+      pdf.font("Lato")
+      # stamp(invoice, pdf)
       company_banner(invoice, pdf)
       bill_to_ship_to(invoice, pdf)
       invoice_details(invoice, pdf)
@@ -45,7 +51,7 @@ module Payday
 
       if stamp
         pdf.bounding_box([150, pdf.cursor - 50], width: pdf.bounds.width - 300) do
-          pdf.font("Helvetica-Bold") do
+          pdf.font("Lato") do
             pdf.fill_color "cc0000"
             pdf.text stamp, align: :center, size: 25, rotate: 15
           end
@@ -69,7 +75,7 @@ module Payday
       end
 
       if File.extname(image) == ".svg"
-        logo_info = pdf.svg(File.read(image), at: pdf.bounds.top_left, width: width, height: height)
+        logo_info = pdf.svg(IO.read(image), at: pdf.bounds.top_left, width: width, height: height)
         logo_height = logo_info[:height]
       else
         logo_info = pdf.image(image, at: pdf.bounds.top_left, width: width, height: height)
@@ -78,9 +84,9 @@ module Payday
 
       # render the company details
       table_data = []
-      table_data << [bold_cell(pdf, invoice_or_default(invoice, :company_name).strip, size: 12)]
+      table_data << [bold_cell(pdf, Payday::Config.default.send(:company_name).strip, size: 11)]
 
-      invoice_or_default(invoice, :company_details).lines.each { |line| table_data << [line] }
+      Payday::Config.default.send(:company_details).lines.each { |line| table_data << [line] }
 
       table = pdf.make_table(table_data, cell_style: { borders: [], padding: 0 })
       pdf.bounding_box([pdf.bounds.width - table.width, pdf.bounds.top], width: table.width, height: table.height + 5) do
@@ -93,6 +99,7 @@ module Payday
     def self.bill_to_ship_to(invoice, pdf)
       bill_to_cell_style = { borders: [], padding: [2, 0] }
       bill_to_ship_to_bottom = 0
+
 
       # render bill to
       pdf.float do
@@ -149,7 +156,19 @@ module Payday
         table_data << [bold_cell(pdf, I18n.t("payday.invoice.due_date", default: "Due Date:")),
                        bold_cell(pdf, due_date, align: :right)]
       end
+      
+      # Date of issue
+      if defined?(invoice.paid_at) && invoice.paid_at
+        if invoice.paid_at.is_a?(Date) || invoice.paid_at.is_a?(Time)
+          paid_date = invoice.paid_at.strftime(Payday::Config.default.date_format)
+        else
+          paid_date = invoice.paid_at.to_s
+        end
 
+        table_data << [bold_cell(pdf, I18n.t("payday.invoice.date_of_issue", default: "Date Of Issue:")),
+                       bold_cell(pdf, paid_date, align: :right)]
+      end
+      
       # Paid on
       if defined?(invoice.paid_at) && invoice.paid_at
         if invoice.paid_at.is_a?(Date) || invoice.paid_at.is_a?(Time)
@@ -173,6 +192,18 @@ module Payday
         table_data << [bold_cell(pdf, I18n.t("payday.invoice.refunded_date", default: "Refunded Date:")),
                        bold_cell(pdf, refunded_date, align: :right)]
       end
+      
+      # Payment method
+      if defined?(invoice.payment_method)
+        if invoice.payment_method.is_a?(String)
+          payment_method = invoice.payment_method
+        else
+          payment_method = invoice.payment_method.to_s
+        end
+        
+        table_data << [bold_cell(pdf, I18n.t("payday.invoice.payment_method", default: "Payment Method:")),
+                       bold_cell(pdf, payment_method, align: :right)]
+      end
 
       # loop through invoice_details and include them
       invoice.each_detail do |key, value|
@@ -189,12 +220,14 @@ module Payday
       table_data = []
       table_data << [bold_cell(pdf, I18n.t("payday.line_item.description", default: "Description"), borders: []),
                      bold_cell(pdf, I18n.t("payday.line_item.unit_price", default: "Unit Price"), align: :center, borders: []),
-                     bold_cell(pdf, I18n.t("payday.line_item.quantity", default: "Quantity"), align: :center, borders: []),
+                     bold_cell(pdf, I18n.t("payday.line_item.vat", default: "Vat"), align: :center, borders: []),
                      bold_cell(pdf, I18n.t("payday.line_item.amount", default: "Amount"), align: :center, borders: [])]
       invoice.line_items.each do |line|
+        vat_price = line.amount * invoice.tax_rate
+        net_price = line.price - vat_price
         table_data << [line.description,
-                       (line.display_price || number_to_currency(line.price, invoice)),
-                       (line.display_quantity || BigDecimal.new(line.quantity.to_s).to_s("F")),
+                       number_to_currency(net_price, invoice),
+                       (invoice.tax_rate * 100).round(0).to_s + '%',
                        number_to_currency(line.amount, invoice)]
       end
 
@@ -222,18 +255,18 @@ module Payday
         cell(pdf, number_to_currency(invoice.subtotal, invoice), align: :right)
       ]
 
-      if invoice.tax_rate > 0
-        if invoice.tax_description.nil?
-          tax_description = I18n.t("payday.invoice.tax", default: "Tax:")
-        else
-          tax_description = invoice.tax_description
-        end
+      # if invoice.tax_rate > 0
+      #   if invoice.tax_description.nil?
+      #     tax_description = I18n.t("payday.invoice.tax", default: "Tax:")
+      #   else
+      #     tax_description = invoice.tax_description
+      #   end
 
-        table_data << [
-          bold_cell(pdf, tax_description),
-          cell(pdf, number_to_currency(invoice.tax, invoice), align: :right)
-        ]
-      end
+      #   table_data << [
+      #     bold_cell(pdf, tax_description),
+      #     cell(pdf, number_to_currency(invoice.tax, invoice), align: :right)
+      #   ]
+      # end
       if invoice.shipping_rate > 0
         if invoice.shipping_description.nil?
           shipping_description =
@@ -248,12 +281,12 @@ module Payday
                align: :right)
         ]
       end
-      table_data << [
-        bold_cell(pdf, I18n.t("payday.invoice.total", default: "Total:"),
-                  size: 12),
-        cell(pdf, number_to_currency(invoice.total, invoice),
-             size: 12, align: :right)
-      ]
+      # table_data << [
+      #   bold_cell(pdf, I18n.t("payday.invoice.total", default: "Total:"),
+      #             size: 12),
+      #   cell(pdf, number_to_currency(invoice.total, invoice),
+      #        size: 12, align: :right)
+      # ]
       table = pdf.make_table(table_data, cell_style: { borders: [] })
       pdf.bounding_box([pdf.bounds.width - table.width, pdf.cursor],
                        width: table.width, height: table.height + 2) do
@@ -265,7 +298,7 @@ module Payday
     def self.notes(invoice, pdf)
       if defined?(invoice.notes) && invoice.notes
         pdf.move_cursor_to(pdf.cursor - 30)
-        pdf.font("Helvetica-Bold") do
+        pdf.font("Lato") do
           pdf.text(I18n.t("payday.invoice.notes", default: "Notes"))
         end
         pdf.line_width = 0.5

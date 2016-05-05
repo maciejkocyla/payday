@@ -46,7 +46,7 @@ module Payday::Invoiceable
 
   # Calculates the total for this invoice.
   def total
-    subtotal + tax + shipping
+    subtotal
   end
 
   def overdue?

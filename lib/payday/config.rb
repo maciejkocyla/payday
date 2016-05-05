@@ -2,7 +2,7 @@ module Payday
   # Configuration for Payday. This is a singleton, so to set the company_name you would call
   # Payday::Config.default.company_name = "Awesome Corp".
   class Config
-    attr_accessor :invoice_logo, :company_name, :company_details, :date_format, :currency
+    attr_accessor :invoice_logo, :logo_width, :company_name, :company_details, :date_format, :currency, :lato_light_font, :lato_medium_font, :lato_regular_font, :lato_bold_font
 
     # Sets the page size to use. See the
     # {http://prawn.majesticseacreature.com/docs/0.10.2/Prawn/Document/PageGeometry.html Prawn documentation} for valid
@@ -19,11 +19,16 @@ module Payday
     # Primarily intended for use in our tests.
     def reset
       # TODO: Move into specs and make minimal configuration required (company name / details)
+      self.lato_light_font = File.join(File.dirname(__FILE__), "..", "..", "spec", "assets", "fonts", "Lato-Light.ttf")
+      self.lato_medium_font = File.join(File.dirname(__FILE__), "..", "..", "spec", "assets", "fonts", "Lato-Medium.ttf")
+      self.lato_regular_font = File.join(File.dirname(__FILE__), "..", "..", "spec", "assets", "fonts", "Lato-Regular.ttf")
+      self.lato_bold_font = File.join(File.dirname(__FILE__), "..", "..", "spec", "assets", "fonts", "Lato-Bold.ttf")
       self.invoice_logo = File.join(File.dirname(__FILE__), "..", "..", "spec", "assets", "default_logo.png")
+      self.logo_width = 200
       self.company_name = "Awesome Corp"
       self.company_details = "awesomecorp@commondream.net"
-      self.date_format = "%B %e, %Y"
-      self.currency = "USD"
+      self.date_format = "%e.%m.%Y"
+      self.currency = "PLN"
       self.page_size = "LETTER"
     end
 
