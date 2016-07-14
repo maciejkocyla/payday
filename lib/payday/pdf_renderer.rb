@@ -17,7 +17,7 @@ module Payday
     def self.pdf(invoice)
       pdf = Prawn::Document.new(page_size: invoice_or_default(invoice, :page_size))
       # set up some default styling
-      pdf.font_size(8)
+      pdf.font_size(12)
       pdf.font_families.update("Lato" => { :light => Payday::Config.default.lato_light_font,
                                             :normal => Payday::Config.default.lato_regular_font,
                                             :medium => Payday::Config.default.lato_medium_font,
@@ -223,8 +223,8 @@ module Payday
                      bold_cell(pdf, I18n.t("payday.line_item.vat", default: "Vat"), align: :center, borders: []),
                      bold_cell(pdf, I18n.t("payday.line_item.amount", default: "Amount"), align: :center, borders: [])]
       invoice.line_items.each do |line|
-        vat_price = line.amount * invoice.tax_rate
-        net_price = line.price - vat_price
+        vat_price = line.amount
+        net_price = line.amount * (1 + invoice.tax_rate)
         table_data << [line.description,
                        number_to_currency(net_price, invoice),
                        (invoice.tax_rate * 100).round(0).to_s + '%',
