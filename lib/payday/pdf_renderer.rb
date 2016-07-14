@@ -224,7 +224,7 @@ module Payday
                      bold_cell(pdf, I18n.t("payday.line_item.amount", default: "Amount"), align: :center, borders: [])]
       invoice.line_items.each do |line|
         vat_price = line.amount
-        net_price = line.amount * (1 + invoice.tax_rate)
+        net_price = line.amount / (1 + invoice.tax_rate)
         table_data << [line.description,
                        number_to_currency(net_price, invoice),
                        (invoice.tax_rate * 100).round(0).to_s + '%',
